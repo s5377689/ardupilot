@@ -87,14 +87,16 @@ public:
 
     // true if vehicle is capable of skid steering
     bool have_skid_steering() const;
-
     // true if vehicle has vectored thrust (i.e. boat with motor on steering servo)
     bool have_vectored_thrust() const { return is_positive(_vector_angle_max); }
 
     // output to motors and steering servos
     // ground_speed should be the vehicle's speed over the surface in m/s
     // dt should be expected time between calls to this function
-    void output(bool armed, float ground_speed, float dt);
+    void output(bool armed, float ground_speed, float dt, float pitch);
+    float map_float(float x, float in_min, float in_max, float out_min, float out_max) {
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
 
     // test steering or throttle output as a percentage of the total (range -100 to +100)
     // used in response to DO_MOTOR_TEST mavlink command
@@ -165,7 +167,7 @@ private:
     void output_regular(bool armed, float ground_speed, float steering, float throttle);
 
     // output to skid steering channels
-    void output_skid_steering(bool armed, float steering, float throttle, float dt);
+    void output_skid_steering(bool armed, float steering, float throttle, float dt, float pitch);
 
     // output for omni motors
     void output_omni(bool armed, float steering, float throttle, float lateral);

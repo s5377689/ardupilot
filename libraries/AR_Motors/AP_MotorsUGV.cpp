@@ -183,12 +183,14 @@ void AP_MotorsUGV::setup_safety_output()
         SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttle, true);
         SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttleLeft, true);
         SRV_Channels::set_trim_to_min_for(SRV_Channel::k_throttleRight, true);
+        // SRV_Channels::set_trim_to_min_for(SRV_Channel::k_waterwing, true);
     }
 
     // stop sending pwm if main CPU fails
     SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttle, SRV_Channel::Limit::ZERO_PWM);
     SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttleLeft, SRV_Channel::Limit::ZERO_PWM);
     SRV_Channels::set_failsafe_limit(SRV_Channel::k_throttleRight, SRV_Channel::Limit::ZERO_PWM);
+    // SRV_Channels::set_failsafe_limit(SRV_Channel::k_waterwing, SRV_Channel::Limit::ZERO_PWM);
 }
 
 // setup servo output ranges
@@ -203,7 +205,7 @@ void AP_MotorsUGV::setup_servo_output()
     // skid steering left/right throttle as -1000 to 1000 values
     SRV_Channels::set_angle(SRV_Channel::k_throttleLeft,  1000);
     SRV_Channels::set_angle(SRV_Channel::k_throttleRight, 1000);
-
+    // SRV_Channels::set_angle(SRV_Channel::k_waterwing, 100);
     // omni motors set in power percent so -100 ... 100
     for (uint8_t i=0; i<AP_MOTORS_NUM_MOTORS_MAX; i++) {
         SRV_Channel::Aux_servo_function_t function = SRV_Channels::get_motor_function(i);
@@ -309,7 +311,7 @@ bool AP_MotorsUGV::has_sail() const
     return SRV_Channels::function_assigned(SRV_Channel::k_mainsail_sheet) || SRV_Channels::function_assigned(SRV_Channel::k_wingsail_elevator) || SRV_Channels::function_assigned(SRV_Channel::k_mast_rotation);
 }
 
-void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
+void AP_MotorsUGV::output(bool armed, float ground_speed, float dt, float pitch)
 {
     // soft-armed overrides passed in armed status
     if (!hal.util->get_soft_armed()) {
@@ -331,7 +333,7 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
     output_regular(armed, ground_speed, _steering, _throttle);
 
     // output for skid steering style frames
-    output_skid_steering(armed, _steering, _throttle, dt);
+    output_skid_steering(armed, _steering, _throttle, dt, pitch);
 
     // output for omni frames
     output_omni(armed, _steering, _throttle, _lateral);
@@ -490,7 +492,7 @@ bool AP_MotorsUGV::pre_arm_check(bool report) const
     const bool have_throttle = SRV_Channels::function_assigned(SRV_Channel::k_throttle);
     const bool have_throttle_left = SRV_Channels::function_assigned(SRV_Channel::k_throttleLeft);
     const bool have_throttle_right = SRV_Channels::function_assigned(SRV_Channel::k_throttleRight);
-
+    // const bool have_throttle_left = SRV_Channels::function_assigned(SRV_Channel::k_waterwing);
     // check that there's defined outputs, inc scripting and sail
     if(!have_throttle_left &&
        !have_throttle_right &&
@@ -579,6 +581,7 @@ void AP_MotorsUGV::setup_pwm_type()
     _motor_mask |= SRV_Channels::get_output_channel_mask(SRV_Channel::k_throttle);
     _motor_mask |= SRV_Channels::get_output_channel_mask(SRV_Channel::k_throttleLeft);
     _motor_mask |= SRV_Channels::get_output_channel_mask(SRV_Channel::k_throttleRight);
+    // _motor_mask |= SRV_Channels::get_output_channel_mask(SRV_Channel::k_waterwing);
     for (uint8_t i=0; i<_motors_num; i++) {
         _motor_mask |= SRV_Channels::get_output_channel_mask(SRV_Channels::get_motor_function(i));
     }
@@ -791,7 +794,7 @@ void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering
 }
 
 // output to skid steering channels
-void AP_MotorsUGV::output_skid_steering(bool armed, float steering, float throttle, float dt)
+void AP_MotorsUGV::output_skid_steering(bool armed, float steering, float throttle, float dt, float pitch)
 {
     if (!have_skid_steering()) {
         return;
@@ -808,9 +811,11 @@ void AP_MotorsUGV::output_skid_steering(bool armed, float steering, float thrott
         if (_disarm_disable_pwm) {
             SRV_Channels::set_output_limit(SRV_Channel::k_throttleLeft, SRV_Channel::Limit::ZERO_PWM);
             SRV_Channels::set_output_limit(SRV_Channel::k_throttleRight, SRV_Channel::Limit::ZERO_PWM);
+            SRV_Channels::set_output_limit(SRV_Channel::k_waterwing, SRV_Channel::Limit::ZERO_PWM);
         } else {
             SRV_Channels::set_output_limit(SRV_Channel::k_throttleLeft, SRV_Channel::Limit::TRIM);
             SRV_Channels::set_output_limit(SRV_Channel::k_throttleRight, SRV_Channel::Limit::TRIM);
+            SRV_Channels::set_output_limit(SRV_Channel::k_waterwing, SRV_Channel::Limit::TRIM);
         }
         return;
     }
@@ -818,7 +823,12 @@ void AP_MotorsUGV::output_skid_steering(bool armed, float steering, float thrott
     // skid steering mixer
     float steering_scaled = steering / 4500.0f; // steering scaled -1 to +1
     float throttle_scaled = throttle * 0.01f;  // throttle scaled -1 to +1
-
+    ///////////////////////////////水翼///////////////////////////////
+    float pitch_angle = pitch;
+    // float waterwing_output = pitch_angle * 1;
+    float waterwing_output = map_float(pitch_angle, -0.1f, 0.1f, 1300.0f, 1700.0f); 
+    waterwing_output = constrain_float(waterwing_output, 1300, 1700);
+    ///////////////////////////////水翼///////////////////////////////
     // sanitize values for asymmetry of thrust, mixer assumes forward thrust is always larger than reverse
     const float thrust_asymmetry = MAX(_thrust_asymmetry, 1.0);
     const float lower_throttle_limit = -1.0 / thrust_asymmetry;
@@ -913,6 +923,7 @@ void AP_MotorsUGV::output_skid_steering(bool armed, float steering, float thrott
     // send pwm value to each motor
     output_throttle(SRV_Channel::k_throttleLeft, 100.0f * motor_left, dt);
     output_throttle(SRV_Channel::k_throttleRight, 100.0f * motor_right, dt);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_waterwing, waterwing_output);
 }
 
 // output for omni frames

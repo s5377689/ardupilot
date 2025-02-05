@@ -994,7 +994,15 @@ bool AR_AttitudeControl::get_forward_speed(float &speed) const
     speed = velocity.x*_ahrs.cos_yaw() + velocity.y*_ahrs.sin_yaw();
     return true;
 }
-
+float AR_AttitudeControl::get_pitch_water() const
+{
+    // 获取当前俯仰角度（弧度）
+    const float pitch_rad = AP::ahrs().get_pitch();
+    // 计算输出，假设 _pitch_to_throttle_ff 是一个预先定义的比例系数
+    float output = sinf(pitch_rad) * 0.4;
+    // 返回输出值，范围在 -1 到 +1 之间
+    return constrain_float(output, -1.0f, 1.0f);
+}
 float AR_AttitudeControl::get_decel_max() const
 {
     if (is_positive(_throttle_decel_max)) {
